@@ -1,0 +1,37 @@
+{
+  "users": 12,
+  "actions": 300,
+  "room": "TZN06",
+  "latency_ms": {
+    "samples": 3300,
+    "p50": 2.26,
+    "p95": 4.92,
+    "p99": 7.99,
+    "max": 15.7
+  },
+  "concurrent": {
+    "clients_firing": 12,
+    "distinct_final_states": 1,
+    "converged": true
+  },
+  "late_join": {
+    "playing": true,
+    "reported_pos": 42,
+    "state_age_s": 1.51
+  },
+  "reconnect": {
+    "users_before": 13,
+    "users_after": 13,
+    "duplicate_seat": false,
+    "got_state": true
+  },
+  "unknown_room": "Room not found",
+  "host_transfer": {
+    "host_kept_during_grace": true,
+    "new_host_agreed_by_all": true
+  },
+  "ended_storm": {
+    "advanced_by": 1,
+    "playlist_len": 2
+  }
+}
