@@ -160,30 +160,41 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
         el.currentTime = S.pos;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [S]);
+  }, [S, fix, toast]);
 
-  function fix(force) {
-    const el = v.current,
-      s = R.S;
-    if (!s || !s.playing || !el || el.readyState < 2 || el.seeking) return;
-    const d = el.currentTime - tgt();
-    R.drift = d * 1000;
-    if (R.perf.drift.length >= 100) R.perf.drift.shift();
-    R.perf.drift.push(Math.abs(R.drift));
-    if (Math.abs(d) > (force ? 0.25 : 0.5)) {
-      el.currentTime = tgt();
-      R.fixes++;
-      el.playbackRate = 1;
-    } else if (Math.abs(d) > 0.06) el.playbackRate = d > 0 ? 0.94 : 1.06;
-    else el.playbackRate = 1;
-  }
+  const fix = useCallback(
+    (force) => {
+      const el = v.current,
+        s = R.S;
+
+      if (!s || !s.playing || !el || el.readyState < 2 || el.seeking) return;
+
+      const d = el.currentTime - tgt();
+      R.drift = d * 1000;
+
+      if (R.perf.drift.length >= 100) R.perf.drift.shift();
+      R.perf.drift.push(Math.abs(R.drift));
+
+      if (Math.abs(d) > (force ? 0.25 : 0.5)) {
+        el.currentTime = tgt();
+        R.fixes++;
+        el.playbackRate = 1;
+      } else if (Math.abs(d) > 0.06) {
+        el.playbackRate = d > 0 ? 0.94 : 1.06;
+      } else {
+        el.playbackRate = 1;
+      }
+    },
+    [R, tgt],
+  );
+
   useEffect(() => {
     const i = setInterval(() => {
       fix(false);
       bump();
     }, 400);
     return () => clearInterval(i);
-  }, []);
+  }, [fix]);
 
   useEffect(() => {
     const i = setInterval(() => {
