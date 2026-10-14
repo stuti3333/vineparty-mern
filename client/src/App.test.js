@@ -2,6 +2,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 
+import App from './App';
+
 const mockH = {};
 const mockOut = [];
 const mockSock = {
@@ -20,8 +22,6 @@ jest.mock('./components/Boot', () => ({
   __esModule: true,
   default: () => null,
 }));
-
-import App from './App';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 window.scrollTo = () => {};
