@@ -8,7 +8,7 @@ VineParty is a real-time watch-party web application that lets friends watch vid
 
 <!-- Replace these placeholders with your actual repository and deployment URLs. -->
 
-[Live Demo](YOUR_LIVE_DEMO_URL) · [Report a Bug](YOUR_REPOSITORY_URL/issues)
+([**🚀 Live Demo**](https://vineparty.netlify.app/)) · [Report a Bug](https://github.com/stuti3333/vineparty-mern/issues)
 
 ---
 
