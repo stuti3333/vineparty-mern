@@ -561,10 +561,23 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
             <Discover
               mini
               onPick={(m) => {
+                if (!m.trailerId || !/^[\w-]{11}$/.test(m.trailerId)) {
+                  toast('This movie needs a valid YouTube trailer ID.');
+                  return;
+                }
+
                 send('pl', {
                   act: 'add',
-                  item: { title: m.t, src: m.src, c: m.c, pid: m.id },
+                  item: {
+                    id: m.id,
+                    pid: m.id,
+                    title: m.t,
+                    trailerId: m.trailerId,
+                    src: m.src,
+                    c: m.c,
+                  },
                 });
+
                 toast(m.t + ' added to queue');
               }}
             />

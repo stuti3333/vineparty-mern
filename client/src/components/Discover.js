@@ -22,12 +22,16 @@ export default function Discover({ mini = false, onPick }) {
   const [mr, setMr] = useState(0);
 
   const list = useMemo(() => {
-    const L = M.map((m) => ({ m, s: fz(q, m.t + ' ' + m.tags) })).filter(
+    const L = M.map((m) => ({
+      m,
+      s: fz(q, m.t + ' ' + m.tags),
+    })).filter(
       (x) =>
         x.s > 0 &&
         x.m.r >= mr &&
         (g === 'All' || (g === 'Marvel' ? x.m.mv : x.m.g.includes(g))),
     );
+
     L.sort((a, b) =>
       sort === 'r'
         ? b.m.r - a.m.r
@@ -39,6 +43,7 @@ export default function Discover({ mini = false, onPick }) {
               ? b.s - a.s
               : 0,
     );
+
     return L.map((x) => x.m);
   }, [q, g, sort, mr]);
 
@@ -52,6 +57,7 @@ export default function Discover({ mini = false, onPick }) {
           placeholder="Fuzzy search: titles, genres, “marvle”…"
           aria-label="Search movies"
         />
+
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value)}
@@ -62,6 +68,7 @@ export default function Discover({ mini = false, onPick }) {
           <option value="y">Newest</option>
           <option value="len">Shortest</option>
         </select>
+
         <select
           value={mr}
           onChange={(e) => setMr(+e.target.value)}
@@ -72,6 +79,7 @@ export default function Discover({ mini = false, onPick }) {
           <option value={4.5}>4.5★+</option>
         </select>
       </div>
+
       <div className="chips" role="group" aria-label="Categories">
         {GENRES.map((x) => (
           <button
@@ -84,6 +92,7 @@ export default function Discover({ mini = false, onPick }) {
           </button>
         ))}
       </div>
+
       <div className="grid">
         {list.length ? (
           list.map((m) => (
@@ -94,7 +103,9 @@ export default function Discover({ mini = false, onPick }) {
               onClick={() => onPick(m)}
             >
               <Poster m={m} />
+
               {m.mv && <span className="tag">MARVEL</span>}
+
               {mini ? (
                 <div className="act">
                   <span>+ QUEUE</span>
@@ -104,6 +115,7 @@ export default function Discover({ mini = false, onPick }) {
                   ▶
                 </span>
               )}
+
               <div className="in">
                 <h4>{m.t}</h4>
                 <small>
