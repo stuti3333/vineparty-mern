@@ -1,59 +1,286 @@
-# VineParty — MERN edition
+# 🍿 VineParty
 
-Synchronized watch parties. **M**ongoDB · **E**xpress · **R**eact · **N**ode (Socket.io for real-time).
+### Synchronized watch parties. Better together.
 
-## Run
+VineParty is a real-time watch-party web application that lets friends watch videos together in a shared room. It combines synchronized playback, live chat, reactions, collaborative queues, polls, and room management in one interface.
+
+**Built with the MERN stack, React, and Socket.IO.**
+
+<!-- Replace these placeholders with your actual repository and deployment URLs. -->
+
+[Live Demo](YOUR_LIVE_DEMO_URL) · [Report a Bug](YOUR_REPOSITORY_URL/issues)
+
+---
+
+## ✨ Features
+
+- **Synchronized Playback** — Coordinate play, pause, seeking, and queue transitions across participants.
+- **Real-Time Communication** — Exchange messages and emoji reactions while watching.
+- **Collaborative Queue** — Add videos, manage the playlist, and jump between queued items.
+- **Discover Videos** — Browse available titles with search, category filters, rating filters, and sorting.
+- **Interactive Polls** — Vote on questions and coordinate decisions such as skipping a video or pausing for a break.
+- **Room Management** — Invite friends, track participants, and support host handover.
+- **Reconnection Support** — Restore a returning participant's room identity and synchronize their state.
+- **Performance Dashboard** — Inspect control latency, playback drift, network statistics, and room activity.
+- **Responsive Video Controls** — Seek, toggle captions when available, mute, and enter fullscreen.
+
+## 🛠️ Tech Stack
+
+| Technology | Purpose                                      |
+| ---------- | -------------------------------------------- |
+| MongoDB    | Persistent data storage when configured      |
+| Express.js | Backend API and HTTP server                  |
+| React      | Frontend interface and component rendering   |
+| Node.js    | Backend JavaScript runtime                   |
+| Socket.IO  | Real-time communication between participants |
+| Mongoose   | MongoDB object-document mapping              |
+
+### Architecture
+
+VineParty uses a client-server architecture. The React client communicates with the Express backend through HTTP endpoints and Socket.IO events.
+
+The server maintains authoritative live room state, while MongoDB provides persistence when enabled. Clients use playback drift correction to keep their video positions aligned with the server's room state.
+
+```text
+                 ┌──────────────────────┐
+                 │     React Client     │
+                 │ Player · Chat · UI   │
+                 └──────────┬───────────┘
+                            │
+                 HTTP + Socket.IO
+                            │
+                 ┌──────────▼───────────┐
+                 │   Node.js + Express  │
+                 │   Socket.IO Server   │
+                 └──────────┬───────────┘
+                            │
+                  ┌─────────▼─────────┐
+                  │   Room Engine     │
+                  │ Authoritative     │
+                  │ Live Room State   │
+                  └─────────┬─────────┘
+                            │
+                  ┌─────────▼─────────┐
+                  │ MongoDB / Mongoose│
+                  │ Optional Storage  │
+                  └───────────────────┘
+```
+
+_The diagram describes the intended architecture; exact persistence behavior depends on the server implementation and configuration._
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js and npm
+- MongoDB, if you want database persistence
+- Git
+
+### 1. Clone the repository
 
 ```bash
-npm run install-all          # server + client dependencies
-cp .env.example .env         # MongoDB is optional: MONGODB_URI=off runs in memory
-npm run dev                  # API http://localhost:3000  +  React http://localhost:3001
+git clone YOUR_REPOSITORY_URL
+cd VineParty
 ```
 
-Production: `npm run build && npm start` → everything on http://localhost:3000 (Express serves `client/build`).
-Invite other devices on your Wi-Fi by opening the app via your computer's network address; the invite dialog shows it.
-
-## Tests
+### 2. Install dependencies
 
 ```bash
-npm start            # in one terminal (MONGODB_URI=off is fine)
-npm test             # 12 users, 300 control actions + failure scenarios → test/results.json
-cd client && npm test   # UI smoke test: intro → home → filters → create room → live state → controls
+npm run install-all
 ```
 
-## What was broken in the previous MERN port, and the fix
+This command should install the server and client dependencies as configured by the root `package.json`.
 
-| Problem                                                                                                                                                                                        | Fix                                                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `npm run build` failed: `./img/hall.jpg` not found (images lived in `public/`, imported from `src/`)                                                                                           | Images are referenced from `public/img`                                                   |
-| `npm start` ran the old `ws` server, not the MERN one; two competing servers                                                                                                                   | One server: `server/index.js` (Express + Socket.io + Mongoose)                            |
-| Clock offset never computed → drift correction compared against the wrong clock on any second device                                                                                           | NTP-style offset from the lowest-RTT of the last 8 pings                                  |
-| `sendCtl` sent `t: undefined` for play/pause → room position corrupted                                                                                                                         | Always sends the real position; `0` handled                                               |
-| Every action did `findOne` + `save` on MongoDB: lost updates under concurrency, DB latency on the sync path                                                                                    | In-memory authoritative state (one total order, `seq`); Mongo is write-behind persistence |
-| Room schema/state mismatch (`currentIdx`, host object) and `next` stopped playback                                                                                                             | One state shape; `next` is idempotent (`from` index) and keeps playing                    |
-| Joining a non-existent room hung silently; others never saw joins/leaves                                                                                                                       | `Room not found` error; state is broadcast on every join/leave                            |
-| Random user id on each reload, `crypto.randomUUID` crashes on plain-http LAN                                                                                                                   | Persistent id; no `randomUUID` — same id reclaims the same seat                           |
-| Intro never advanced (`#track` inside a fixed stage), scenes swapped, wrong aspect ratios, **Enter button had no handler**, 60 fps `setState`, requestAnimationFrame loops stacking per render | Rebuilt: one rAF loop, refs only, correct order and ratios, working button                |
-| Hero/cards pointed at non-existent `*.jpg` next to the mp4s → blank posters                                                                                                                    | Local poster + hero art with per-movie SVG fallback and alt text                          |
-| Discover section was static (search/chips did nothing)                                                                                                                                         | Working fuzzy search, categories, rating filter and sort                                  |
-| Heat map used `Math.random()`; floating emoji never rendered; status stuck on "connecting…"                                                                                                    | Real heat buckets, floating emoji, live status                                            |
-| `esc()` applied inside JSX (double escaping), chat via `document.querySelector`                                                                                                                | React escapes; controlled inputs                                                          |
-| Missing: GhostFibers background, boot splash, invite dialog, polls that act, host handover, reconnect                                                                                          | All present                                                                               |
-| Socket.io CORS allowed `localhost:3000` only (the dev client is on 3001); `required length:5` isn't a Mongoose option                                                                          | Dev CORS open, `CLIENT_ORIGIN` in prod; `minlength/maxlength`                             |
+### 3. Configure environment variables
 
-New lobby photo: the marquee text is re-lettered with our own plates (`NOW SHOWING`, `WATCH TOGETHER`, `BEST TIMEPASS`, `VINEPARTY`). The photo still shows a real venue's building and posters.
+Create your local environment file:
 
-## Measured (test/results.json — localhost, Node 22, 12 clients, 300 actions)
-
-Control propagation p50 ≈ 2 ms, **p95 ≈ 4–5 ms**, p99 ≈ 8 ms (target ≤ 250 ms). 12 simultaneous seeks converge to one state; late join and reconnect restore state without duplicate seats; unknown room rejected; host handed over after the 8 s grace; 12 simultaneous "ended" reports advance the queue once.
-Not measured here: real-network jitter and in-browser video drift (the correction loop targets ≤ 500 ms; the Stats tab shows live numbers).
-
-## Structure
-
-```
-server/  index.js (Express, REST, static) · socket.js (events) · rooms.js (live engine + persistence) · models/Room.js
-client/  src/App.js · components/ (Boot, Intro, Home, Room, Discover, Details, Modal, Fibers) · hooks/useRoom.js · lib/ · data/
-test/    load.js
+```bash
+cp .env.example .env
 ```
 
-Posters are local files, the player streams open-licence demo videos; paste any direct mp4 URL in **Queue** to watch your own.
+Configure the variables required by your server. If your implementation supports in-memory operation, set:
+
+```env
+MONGODB_URI=off
+```
+
+**Note:** In-memory state may be lost when the server restarts. Use a configured database when persistent storage is required.
+
+### 4. Start development servers
+
+```bash
+npm run dev
+```
+
+According to the project's current configuration:
+
+- React frontend: `http://localhost:3001`
+- Express backend: `http://localhost:3000`
+
+The actual ports depend on the scripts and environment configuration in your repository.
+
+## 🏗️ Production
+
+To build the React frontend and start the Express server:
+
+```bash
+npm run build
+npm start
+```
+
+In the combined deployment configuration, Express serves the compiled frontend from `client/build`.
+
+The production server is expected to be available at:
+
+`http://localhost:3000`
+
+Make sure the frontend has been built and all required environment variables are configured before starting the production server.
+
+## ☁️ Deployment
+
+VineParty can be deployed as one application or as separate frontend and backend services.
+
+### Frontend — Netlify
+
+Configure the Netlify site with:
+
+| Setting           | Value           |
+| ----------------- | --------------- |
+| Base directory    | `client`        |
+| Build command     | `npm run build` |
+| Publish directory | `build`         |
+
+If your client uses `REACT_APP_API_URL`, configure it with your deployed backend's public URL.
+
+### Backend — Render
+
+Deploy the Node.js/Express server and configure the environment variables required by your implementation, including:
+
+- `MONGODB_URI`, if using MongoDB
+- `CLIENT_ORIGIN`, if used by your server for CORS
+- Any other required server configuration
+
+Ensure that the backend accepts connections from the deployed frontend and that Socket.IO is configured correctly for the production origin.
+
+**Important:** React environment variables prefixed with `REACT_APP_` are embedded during the frontend build. Changes to these values require a new build and deployment. Never put private secrets in frontend environment variables.
+
+## 🧪 Testing
+
+Run the backend integration/load test:
+
+```bash
+npm start
+```
+
+In a separate terminal:
+
+```bash
+npm test
+```
+
+The documented test suite exercises multiple clients and control actions, including synchronization, reconnection, unknown-room rejection, and host handover. Its results are written to:
+
+```text
+test/results.json
+```
+
+Run the frontend test separately:
+
+```bash
+cd client
+npm test
+```
+
+The documented UI smoke test covers the intro, home screen, filters, room creation, live state, and playback controls.
+
+### Performance measurements
+
+The project's existing local test report describes the following results:
+
+| Metric                  |      Reported result |
+| ----------------------- | -------------------: |
+| Control propagation p50 |   Approximately 2 ms |
+| Control propagation p95 | Approximately 4–5 ms |
+| Control propagation p99 |   Approximately 8 ms |
+| Test clients            |                   12 |
+| Control actions         |                  300 |
+
+These are reported localhost test measurements, not guarantees of real-world network performance.
+
+Control-message latency and actual video synchronization drift are different measurements. Real-network jitter and end-to-end browser playback synchronization require separate testing.
+
+## 🔧 Engineering Highlights
+
+VineParty addresses several challenges involved in building synchronized, multi-user applications.
+
+| Challenge                                    | Approach                                                             |
+| -------------------------------------------- | -------------------------------------------------------------------- |
+| Keeping playback positions aligned           | Server-authoritative playback state and client-side drift correction |
+| Concurrent room actions                      | Ordered in-memory state updates                                      |
+| Database latency on the synchronization path | Write-behind persistence strategy                                    |
+| Reconnecting participants                    | Persistent user identity and seat recovery                           |
+| Host disconnection                           | Delayed host handover                                                |
+| Duplicate video-ended events                 | Idempotent queue advancement                                         |
+| Joining an invalid room                      | Explicit room-not-found handling                                     |
+| Real-time room updates                       | Socket.IO event broadcasting                                         |
+| Misaligned playback controls                 | Shared room state and synchronized control actions                   |
+| Inaccurate playback heat maps                | Heat buckets derived from actual activity                            |
+
+These implementation details should be kept in sync with the actual codebase as the project evolves.
+
+## 📁 Project Structure
+
+```text
+VineParty/
+├── server/
+│   ├── index.js
+│   ├── socket.js
+│   ├── rooms.js
+│   └── models/
+│       └── Room.js
+├── client/
+│   └── src/
+│       ├── App.js
+│       ├── components/
+│       │   ├── Boot.js
+│       │   ├── Intro.js
+│       │   ├── Home.js
+│       │   ├── Room.js
+│       │   ├── Discover.js
+│       │   ├── Details.js
+│       │   ├── Modal.js
+│       │   └── Fibers.js
+│       ├── hooks/
+│       │   └── useRoom.js
+│       ├── lib/
+│       └── data/
+└── test/
+    └── load.js
+```
+
+_This structure reflects the project's documented layout; adjust filenames if the repository has changed._
+
+## 🎬 Video Playback
+
+The project includes local poster artwork and demo videos.
+
+Users can add a custom video through the queue using a direct HTTP(S) video URL, such as an accessible MP4 or WebM file.
+
+Playback depends on browser compatibility, the media server's accessibility, supported formats, and applicable cross-origin restrictions. A movie title or a streaming-service webpage URL is not automatically a playable video source.
+
+## 🔮 Potential Improvements
+
+- Add automated end-to-end tests for synchronized playback.
+- Test playback drift under simulated latency, packet loss, and jitter.
+- Improve persistence and recovery across backend restarts.
+- Add stronger validation and security controls for custom media URLs.
+- Expand accessibility, responsive layout, and browser compatibility testing.
+
+## 📄 License
+
+Add your chosen license before distributing the project. If you intend to publish it as an open-source project, include a `LICENSE` file that specifies how others may use and modify the code.
+
+---
+
+**VineParty — less coordinating, more watching.** 🍿
