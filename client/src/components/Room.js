@@ -156,23 +156,6 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
     return v.current?.duration || 0;
   }, [isYouTube]);
 
-  const seekTo = useCallback(
-    (time) => {
-      const t = Math.max(0, Number(time) || 0);
-
-      if (isYouTube && ytReady.current && yt.current) {
-        try {
-          yt.current.seekTo(t, true);
-        } catch {
-          // The player may not be ready yet.
-        }
-      } else if (v.current) {
-        v.current.currentTime = t;
-      }
-    },
-    [isYouTube],
-  );
-
   const playMedia = useCallback(() => {
     if (isYouTube && ytReady.current && yt.current) {
       try {
