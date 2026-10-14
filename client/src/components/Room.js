@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import YouTube from 'react-youtube';
 import useRoom from '../hooks/useRoom';
 import Discover from './Discover';
 import Modal from './Modal';
@@ -21,6 +22,7 @@ const TABS = [
   ['ppl', 'PEOPLE'],
   ['stats', 'STATS'],
 ];
+
 const p95 = (a) =>
   a.length ? [...a].sort((x, y) => x - y)[Math.floor(a.length * 0.95)] : 0;
 const avg = (a) =>
@@ -28,11 +30,12 @@ const avg = (a) =>
 const mx = (a) => (a.length ? Math.max(...a) : 0);
 
 function Stats({ room, me, tick }) {
-  const { S, R } = room,
-    P = R.perf,
-    d = Math.abs(R.drift) | 0,
-    c95 = p95(P.ctl);
+  const { S, R } = room;
+  const P = R.perf;
+  const d = Math.abs(R.drift) | 0;
+  const c95 = p95(P.ctl);
   void tick;
+
   return (
     <div className="stats">
       <div className="stat-group">
@@ -100,155 +103,311 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
       onLeave();
     },
   });
+
   const { S, chat, heat, flies, live, send, sNow, R } = room;
-  const v = useRef(null),
-    seek = useRef(null),
-    tm = useRef(null),
-    buf = useRef(null),
-    msgs = useRef(null);
+
+  const v = useRef(null);
+  const yt = useRef(null);
+  const ytReady = useRef(false);
+  const ytId = useRef(null);
+  const seek = useRef(null);
+  const tm = useRef(null);
+  const buf = useRef(null);
+  const msgs = useRef(null);
+  const drag = useRef(false);
+  const ending = useRef(false);
+
   const [tab, setTab] = useState('chat');
   const [dur, setDur] = useState(0);
   const [muted, setMuted] = useState(false);
   const [cc, setCc] = useState(false);
   const [msg, setMsg] = useState('');
-  const [qt, setQt] = useState(''),
-    [qu, setQu] = useState(''),
-    [pq, setPq] = useState(''),
-    [po, setPo] = useState('');
-  const [invite, setInvite] = useState(false),
-    [statsOpen, setStatsOpen] = useState(false);
+  const [qt, setQt] = useState('');
+  const [qu, setQu] = useState('');
+  const [pq, setPq] = useState('');
+  const [po, setPo] = useState('');
+  const [invite, setInvite] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [lan, setLan] = useState([]);
   const [tick, bump] = useReducer((x) => x + 1, 0);
-  const drag = useRef(false);
+
+  const it = S && S.playlist[S.idx];
+  const isYouTube = Boolean(it && it.trailerId);
+
+  const getTime = useCallback(() => {
+    if (isYouTube && ytReady.current && yt.current) {
+      try {
+        return yt.current.getCurrentTime() || 0;
+      } catch {
+        return 0;
+      }
+    }
+    return v.current?.currentTime || 0;
+  }, [isYouTube]);
+
+  const getDuration = useCallback(() => {
+    if (isYouTube && ytReady.current && yt.current) {
+      try {
+        return yt.current.getDuration() || 0;
+      } catch {
+        return 0;
+      }
+    }
+    return v.current?.duration || 0;
+  }, [isYouTube]);
+
+  const seekTo = useCallback(
+    (time) => {
+      const t = Math.max(0, Number(time) || 0);
+
+      if (isYouTube && ytReady.current && yt.current) {
+        try {
+          yt.current.seekTo(t, true);
+        } catch {
+          // The player may not be ready yet.
+        }
+      } else if (v.current) {
+        v.current.currentTime = t;
+      }
+    },
+    [isYouTube],
+  );
+
+  const playMedia = useCallback(() => {
+    if (isYouTube && ytReady.current && yt.current) {
+      try {
+        yt.current.playVideo();
+      } catch {
+        // The player may not be ready yet.
+      }
+    } else if (v.current) {
+      v.current.play().catch(() => {
+        v.current.muted = true;
+        setMuted(true);
+        v.current.play().catch(() => {});
+        toast('Autoplay blocked — started muted');
+      });
+    }
+  }, [isYouTube, toast]);
+
+  const pauseMedia = useCallback(() => {
+    if (isYouTube && ytReady.current && yt.current) {
+      try {
+        yt.current.pauseVideo();
+      } catch {
+        // The player may not be ready yet.
+      }
+    } else if (v.current) {
+      v.current.pause();
+      v.current.playbackRate = 1;
+    }
+  }, [isYouTube]);
 
   const tgt = useCallback(() => {
     const s = R.S;
     if (!s) return 0;
-    const t = s.playing ? s.pos + (sNow() - s.at) / 1000 : s.pos;
-    return v.current && v.current.duration
-      ? Math.min(t, v.current.duration)
-      : t;
-  }, [R, sNow]);
+
+    const time = s.playing ? s.pos + (sNow() - s.at) / 1000 : s.pos;
+    const duration = getDuration();
+
+    return duration ? Math.min(time, duration) : time;
+  }, [R, sNow, getDuration]);
+
   const fix = useCallback(
     (force) => {
-      const el = v.current,
-        s = R.S;
+      const s = R.S;
+      if (!s || !s.playing) return;
 
-      if (!s || !s.playing || !el || el.readyState < 2 || el.seeking) return;
+      if (isYouTube && ytReady.current && yt.current) {
+        try {
+          const player = yt.current;
+          const state = player.getPlayerState();
+          if (state !== 1 && state !== 3) player.playVideo();
 
-      const d = el.currentTime - tgt();
-      R.drift = d * 1000;
+          const current = player.getCurrentTime();
+          const target = tgt();
+          const drift = current - target;
+
+          R.drift = drift * 1000;
+          if (R.perf.drift.length >= 100) R.perf.drift.shift();
+          R.perf.drift.push(Math.abs(R.drift));
+
+          if (Math.abs(drift) > (force ? 0.25 : 0.75)) {
+            player.seekTo(target, true);
+            R.fixes++;
+          }
+        } catch {
+          // YouTube can briefly be unavailable while initializing.
+        }
+        return;
+      }
+
+      const el = v.current;
+      if (!el || el.readyState < 2 || el.seeking) return;
+
+      const drift = el.currentTime - tgt();
+      R.drift = drift * 1000;
 
       if (R.perf.drift.length >= 100) R.perf.drift.shift();
       R.perf.drift.push(Math.abs(R.drift));
 
-      if (Math.abs(d) > (force ? 0.25 : 0.5)) {
+      if (Math.abs(drift) > (force ? 0.25 : 0.5)) {
         el.currentTime = tgt();
         R.fixes++;
         el.playbackRate = 1;
-      } else if (Math.abs(d) > 0.06) {
-        el.playbackRate = d > 0 ? 0.94 : 1.06;
+      } else if (Math.abs(drift) > 0.06) {
+        el.playbackRate = drift > 0 ? 0.94 : 1.06;
       } else {
         el.playbackRate = 1;
       }
     },
-    [R, tgt],
+    [R, tgt, isYouTube],
   );
 
-  const it = S && S.playlist[S.idx];
+  // Load and synchronize direct video URLs.
   useEffect(() => {
     const el = v.current;
-    if (!el || !S) return;
+    if (!el || isYouTube) return;
+
     if (!it) {
+      el.pause();
       el.removeAttribute('src');
       el.dataset.id = '';
+      setDur(0);
       return;
     }
+
     if (el.dataset.id !== String(it.id)) {
-      el.dataset.id = it.id;
+      el.dataset.id = String(it.id);
       el.src = it.src;
       el.load();
     }
+
     if (S.playing) {
-      if (el.paused)
-        el.play().catch(() => {
-          el.muted = true;
-          setMuted(true);
-          el.play().catch(() => {});
-          toast('Autoplay blocked — started muted');
-        });
+      if (el.paused) playMedia();
       fix(true);
     } else {
-      el.pause();
-      el.playbackRate = 1;
-      if (el.readyState && Math.abs(el.currentTime - S.pos) > 0.05)
+      pauseMedia();
+      if (el.readyState && Math.abs(el.currentTime - S.pos) > 0.05) {
         el.currentTime = S.pos;
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [S, fix, toast]);
+  }, [S, it, isYouTube, fix, playMedia, pauseMedia]);
+
+  // Synchronize YouTube playback with the server room state.
+  useEffect(() => {
+    if (!isYouTube || !it || !ytReady.current || !yt.current || !S) return;
+
+    const player = yt.current;
+
+    try {
+      if (ytId.current !== String(it.trailerId)) {
+        ytId.current = String(it.trailerId);
+        ending.current = false;
+        player.loadVideoById({
+          videoId: it.trailerId,
+          startSeconds: Math.max(0, S.pos || 0),
+        });
+      } else if (S.playing) {
+        player.playVideo();
+        fix(true);
+      } else {
+        player.pauseVideo();
+        const current = player.getCurrentTime() || 0;
+        if (Math.abs(current - (S.pos || 0)) > 0.75) {
+          player.seekTo(Math.max(0, S.pos || 0), true);
+        }
+      }
+    } catch {
+      // The iframe API may still be loading.
+    }
+  }, [S, it, isYouTube, fix]);
+
+  // Keep the active player's progress and duration available to the controls.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const duration = getDuration();
+      const current = getTime();
+
+      if (duration) setDur(duration);
+
+      if (!seek.current || !tm.current || drag.current) return;
+
+      seek.current.max = duration || 1000;
+      seek.current.value = current;
+      tm.current.textContent = fmt(current) + ' / ' + fmt(duration);
+
+      if (!isYouTube && v.current && buf.current && duration) {
+        const el = v.current;
+        if (el.buffered.length) {
+          buf.current.style.width =
+            (el.buffered.end(el.buffered.length - 1) / duration) * 100 + '%';
+        }
+      }
+
+      if (seek.current) {
+        seek.current.style.setProperty(
+          '--value',
+          duration ? (current / duration) * 100 + '%' : '0%',
+        );
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [getDuration, getTime, isYouTube]);
 
   useEffect(() => {
-    const i = setInterval(() => {
+    const interval = setInterval(() => {
       fix(false);
       bump();
     }, 400);
-    return () => clearInterval(i);
-  }, [fix]);
 
-  useEffect(() => {
-    const i = setInterval(() => {
-      const el = v.current,
-        sk = seek.current;
-      if (!el || !sk || drag.current || !el.duration) return;
-      sk.max = el.duration;
-      sk.value = el.currentTime;
-      tm.current.textContent = fmt(el.currentTime) + ' / ' + fmt(el.duration);
-      if (el.buffered.length)
-        buf.current.style.width =
-          (el.buffered.end(el.buffered.length - 1) / el.duration) * 100 + '%';
-      sk.style.setProperty(
-        '--value',
-        (el.currentTime / el.duration) * 100 + '%',
-      );
-    }, 250);
-    return () => clearInterval(i);
-  }, []);
+    return () => clearInterval(interval);
+  }, [fix]);
 
   useEffect(() => {
     if (msgs.current) msgs.current.scrollTop = msgs.current.scrollHeight;
   }, [chat, tab]);
+
   useEffect(() => {
     api('/api/info', { cache: 'no-store' })
       .then((r) => r.json())
       .then((j) => setLan(j.lan || []))
       .catch(() => {});
   }, []);
+
   useEffect(() => {
     if (tab !== 'stats' && !statsOpen) return;
-    const i = setInterval(bump, 1000);
-    return () => clearInterval(i);
+    const interval = setInterval(bump, 1000);
+    return () => clearInterval(interval);
   }, [tab, statsOpen]);
 
-  const B = 60,
-    buckets = Array(B).fill(0);
-  if (dur)
+  const B = 60;
+  const buckets = Array(B).fill(0);
+
+  if (dur) {
     heat.forEach((h) => {
       buckets[clamp(((h.t / dur) * B) | 0, 0, B - 1)]++;
     });
-  const hmax = Math.max(1, ...buckets);
+  }
 
+  const hmax = Math.max(1, ...buckets);
   const isLocal = /^(localhost|127\.|\[::1\])/.test(window.location.hostname);
+
   const inviteUrl = () => {
-    const o =
+    const origin =
       isLocal && lan.length
         ? window.location.protocol +
           '//' +
           lan[0] +
           (window.location.port ? ':' + window.location.port : '')
         : window.location.origin;
-    return o + '/#/r/' + code;
+
+    return origin + '/#/r/' + code;
   };
+
   const inviteInput = useRef(null);
+
   const openInvite = async () => {
     setInvite(true);
     const ok = await copyText(inviteUrl(), null);
@@ -256,7 +415,14 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
   };
 
   const isHost = S && S.host === me.id;
-  const ctl = (act, t) => send('ctl', { act, t });
+  const ctl = (act, time) => send('ctl', { act, t: time });
+
+  const handleEnded = () => {
+    if (R.S && !ending.current) {
+      ending.current = true;
+      send('ctl', { act: 'next', from: R.S.idx });
+    }
+  };
 
   return (
     <div id="room">
@@ -271,6 +437,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
         >
           VINE<b>PARTY</b>
         </a>
+
         <span
           className="code"
           title="Invite friends"
@@ -284,12 +451,15 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
         >
           {code}
         </span>
+
         <button className="ghost" onClick={openInvite}>
           COPY INVITE LINK
         </button>
+
         <span className={'stat ' + (live && S ? 'ok' : 'bad')}>
           {live ? (S ? '● live' : 'joining…') : 'reconnecting…'}
         </span>
+
         <button
           className="ghost"
           title="Performance stats"
@@ -298,7 +468,9 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
         >
           📊
         </button>
+
         <span className="sp" />
+
         <div className="av">
           {S &&
             S.users.map((u) => (
@@ -311,6 +483,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
               </span>
             ))}
         </div>
+
         <button className="ghost" onClick={onLeave}>
           LEAVE
         </button>
@@ -318,20 +491,65 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
 
       <div className="main">
         <div className="pw">
+          {isYouTube && it ? (
+            <YouTube
+              key={it.trailerId}
+              videoId={it.trailerId}
+              iframeClassName="youtube-player"
+              className="youtube-container"
+              opts={{
+                width: '100%',
+                height: '100%',
+                playerVars: {
+                  autoplay: 0,
+                  controls: 0,
+                  rel: 0,
+                  playsinline: 1,
+                  origin: window.location.origin,
+                },
+              }}
+              onReady={(event) => {
+                yt.current = event.target;
+                ytReady.current = true;
+                ytId.current = String(it.trailerId);
+
+                try {
+                  if (S && S.pos > 0) {
+                    event.target.seekTo(S.pos, true);
+                  }
+                  if (S && S.playing) {
+                    event.target.playVideo();
+                  }
+                } catch {
+                  // Wait for the player to finish initializing.
+                }
+              }}
+              onStateChange={(event) => {
+                // YouTube state 0 means the video has ended.
+                if (event.data === 0) handleEnded();
+              }}
+              onError={() => {
+                toast('This YouTube trailer could not be played.');
+              }}
+            />
+          ) : null}
+
           <video
             ref={v}
             playsInline
             preload="auto"
             crossOrigin="anonymous"
+            style={{ display: isYouTube ? 'none' : 'block' }}
             onLoadedMetadata={(e) => {
               setDur(e.currentTarget.duration);
-              seek.current && (seek.current.max = e.currentTarget.duration);
-              R.S && setTimeout(() => fix(true), 0);
+              if (seek.current) seek.current.max = e.currentTarget.duration;
+              if (R.S) setTimeout(() => fix(true), 0);
             }}
-            onEnded={() => R.S && send('ctl', { act: 'next', from: R.S.idx })}
+            onEnded={handleEnded}
           >
             <track kind="captions" srcLang="en" label="English" />
           </video>
+
           {!it && (
             <div className="empty">
               <div>
@@ -344,6 +562,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
               </div>
             </div>
           )}
+
           <div id="fl" aria-hidden="true">
             {flies.map((f) => (
               <span key={f.k} style={{ left: f.x + '%', '--r': f.r + 'deg' }}>
@@ -361,18 +580,21 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
           >
             {S && S.playing ? '❚❚' : '▶'}
           </button>
+
           <button
             aria-label="Back 10 seconds"
             onClick={() => ctl('seek', Math.max(0, tgt() - 10))}
           >
             −10
           </button>
+
           <button
             aria-label="Forward 10 seconds"
             onClick={() => ctl('seek', tgt() + 10)}
           >
             +10
           </button>
+
           <div className="sk">
             <div className="heat" aria-hidden="true">
               {buckets.map((n, i) => (
@@ -390,7 +612,10 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
               aria-label="Seek"
               onInput={(e) => {
                 drag.current = true;
-                tm.current.textContent = fmt(e.target.value) + ' / ' + fmt(dur);
+                if (tm.current) {
+                  tm.current.textContent =
+                    fmt(e.target.value) + ' / ' + fmt(dur);
+                }
               }}
               onChange={(e) => {
                 drag.current = false;
@@ -398,39 +623,72 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
               }}
             />
           </div>
+
           <span className="tm" ref={tm}>
             0:00
           </span>
+
           <button
             aria-label="Captions"
             title="Captions"
             style={{ opacity: cc ? 1 : 0.5 }}
             onClick={() => {
-              const t = v.current && v.current.textTracks[0];
-              if (!t) return toast('No captions for this video');
-              t.mode = t.mode === 'showing' ? 'hidden' : 'showing';
-              setCc(t.mode === 'showing');
-              toast(t.mode === 'showing' ? 'Captions on' : 'Captions off');
+              if (isYouTube && ytReady.current && yt.current) {
+                try {
+                  if (!cc) {
+                    yt.current.loadModule('captions');
+                    yt.current.setOption('captions', 'track', {
+                      languageCode: 'en',
+                    });
+                  } else {
+                    yt.current.unloadModule('captions');
+                  }
+                  setCc(!cc);
+                } catch {
+                  toast('Captions are unavailable for this trailer.');
+                }
+                return;
+              }
+
+              const track = v.current && v.current.textTracks[0];
+              if (!track) return toast('No captions for this video');
+
+              track.mode = track.mode === 'showing' ? 'hidden' : 'showing';
+              setCc(track.mode === 'showing');
+              toast(track.mode === 'showing' ? 'Captions on' : 'Captions off');
             }}
           >
             CC
           </button>
+
           <button
             aria-label="Mute"
             onClick={() => {
-              v.current.muted = !v.current.muted;
-              setMuted(v.current.muted);
+              const nextMuted = !muted;
+
+              if (isYouTube && ytReady.current && yt.current) {
+                if (nextMuted) yt.current.mute();
+                else yt.current.unMute();
+              } else if (v.current) {
+                v.current.muted = nextMuted;
+              }
+
+              setMuted(nextMuted);
             }}
           >
             {muted ? '🔇' : '🔊'}
           </button>
+
           <button
             aria-label="Fullscreen"
             onClick={() => {
-              const pw = document.querySelector('.pw');
+              const player = document.querySelector('.pw');
+
               document.fullscreenElement
                 ? document.exitFullscreen()
-                : pw && pw.requestFullscreen && pw.requestFullscreen();
+                : player &&
+                  player.requestFullscreen &&
+                  player.requestFullscreen();
             }}
           >
             ⛶
@@ -442,14 +700,13 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
             <button
               key={e}
               aria-label={'React ' + e}
-              onClick={() =>
-                send('react', { e, t: v.current ? v.current.currentTime : 0 })
-              }
+              onClick={() => send('react', { e, t: getTime() })}
             >
               {e}
             </button>
           ))}
         </div>
+
         <div className="np">
           <span className="small">
             SYNC ±{Math.abs(R.drift) | 0} ms · RTT {R.rtt} ms · {R.fixes} hard
@@ -461,17 +718,18 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
 
       <aside className="side2">
         <div className="tabs" role="tablist">
-          {TABS.map(([k, l]) => (
+          {TABS.map(([key, label]) => (
             <button
-              key={k}
+              key={key}
               role="tab"
-              aria-selected={tab === k}
-              onClick={() => setTab(k)}
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
             >
-              {l}
+              {label}
             </button>
           ))}
         </div>
+
         <div className="pane">
           {tab === 'chat' && (
             <div className="msgs" ref={msgs}>
@@ -523,6 +781,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
                   <p className="small">Queue is empty.</p>
                 )}
               </div>
+
               <p className="small">Add any direct video URL (mp4/webm):</p>
               <input
                 placeholder="Title"
@@ -538,8 +797,10 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
               <button
                 className="blue"
                 onClick={() => {
-                  if (!/^https?:\/\//.test(qu.trim()))
+                  if (!/^https?:\/\//.test(qu.trim())) {
                     return toast('Enter a valid http(s) URL');
+                  }
+
                   send('pl', {
                     act: 'add',
                     item: {
@@ -548,6 +809,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
                       c: ['#334155', '#0ea5e9'],
                     },
                   });
+
                   setQt('');
                   setQu('');
                 }}
@@ -573,7 +835,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
                     pid: m.id,
                     title: m.t,
                     trailerId: m.trailerId,
-                    src: m.src,
+                    src: m.src || '',
                     c: m.c,
                   },
                 });
@@ -614,6 +876,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
                   SNACK BREAK?
                 </button>
               </div>
+
               <input
                 placeholder="Question"
                 maxLength={90}
@@ -632,8 +895,11 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
                     .split(',')
                     .map((s) => s.trim())
                     .filter(Boolean);
-                  if (!pq.trim() || opts.length < 2)
+
+                  if (!pq.trim() || opts.length < 2) {
                     return toast('Add a question and at least two options');
+                  }
+
                   send('poll', { q: pq, opts });
                   setPq('');
                   setPo('');
@@ -641,10 +907,13 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
               >
                 CREATE POLL
               </button>
+
               <div style={{ marginTop: 14 }}>
                 {S && S.polls.length ? (
                   [...S.polls].reverse().map((q) => {
-                    const tot = q.opts.reduce((a, o) => a + o.v.length, 0) || 1;
+                    const total =
+                      q.opts.reduce((a, o) => a + o.v.length, 0) || 1;
+
                     return (
                       <div className="poll" key={q.id}>
                         <h4>{q.q}</h4>
@@ -656,7 +925,9 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
                             onClick={() => send('vote', { pid: q.id, i })}
                           >
                             <i
-                              style={{ width: (o.v.length / tot) * 100 + '%' }}
+                              style={{
+                                width: (o.v.length / total) * 100 + '%',
+                              }}
                             />
                             <span>
                               {o.t}
@@ -713,6 +984,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
 
           {tab === 'stats' && <Stats room={room} me={me} tick={tick} />}
         </div>
+
         {tab === 'chat' && (
           <form
             className="cin"
@@ -796,6 +1068,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
               : ''}
         </p>
       </Modal>
+
       <Modal
         open={statsOpen}
         onClose={() => setStatsOpen(false)}
