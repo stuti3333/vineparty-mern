@@ -489,6 +489,7 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
                   rel: 0,
                   playsinline: 1,
                   origin: window.location.origin,
+                  widget_referrer: window.location.origin,
                 },
               }}
               onReady={(event) => {
