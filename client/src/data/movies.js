@@ -1,4 +1,4 @@
-const YT = 'https://www.youtube-nocookie.com/embed/';
+const YT = 'https://www.youtube.com/embed/';
 
 export const M = [
   {
