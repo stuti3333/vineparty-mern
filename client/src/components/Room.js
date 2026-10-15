@@ -481,39 +481,25 @@ export default function Room({ code, me, create, qpick, toast, onLeave }) {
               iframeClassName="youtube-player"
               className="youtube-container"
               opts={{
+                host: 'https://www.youtube.com',
                 width: '100%',
                 height: '100%',
                 playerVars: {
                   autoplay: 0,
-                  controls: 0,
+                  controls: 1,
                   rel: 0,
                   playsinline: 1,
                   origin: window.location.origin,
-                  widget_referrer: window.location.origin,
                 },
               }}
               onReady={(event) => {
-                yt.current = event.target;
-                ytReady.current = true;
-                ytId.current = String(it.trailerId);
-
-                try {
-                  if (S && S.pos > 0) {
-                    event.target.seekTo(S.pos, true);
-                  }
-                  if (S && S.playing) {
-                    event.target.playVideo();
-                  }
-                } catch {
-                  // Wait for the player to finish initializing.
-                }
+                // Keep your existing onReady logic here
               }}
               onStateChange={(event) => {
-                // YouTube state 0 means the video has ended.
-                if (event.data === 0) handleEnded();
+                // Keep your existing onStateChange logic here
               }}
-              onError={() => {
-                toast('This YouTube trailer could not be played.');
+              onError={(event) => {
+                console.error('YouTube player error:', event.data);
               }}
             />
           ) : null}
